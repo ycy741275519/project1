@@ -5,6 +5,7 @@
 # @Desc  :定义cnn网络结构
 import tensorflow as tf
 import load_data as ld
+from tensorflow.contrib import rnn
 
 conv1d_stride =1   #卷积步长
 pool_stride = [2]    #池化步长
@@ -20,7 +21,9 @@ CONV2_SIZE = 5
 CONV2_DEEP = 32
 
 # 全连接层节点数
-FULL_SIZE=500
+FULL_SIZE=100
+#lstm层神经元个数
+LSTM_NUMBER=500
 # softmax层数
 CLASS_NUMBER =3
 
@@ -38,7 +41,7 @@ def conv1d(x,w):
 # arg:win_shape 窗口大小
 # arg:method 池化方式
 def pool(x,win_shape,method='MAX'):
-    return tf.nn.pool(x,window_shape=win_shape,pooling_type=method, padding="SAME",strides=pool_stride)
+    return tf.nn.pool(x,window_shape=win_shape,pooling_type=method, padding="VALID",strides=pool_stride)
 
 # 创建权重
 # arg:shape (过滤器宽度，输入通道数，输出通道数)
@@ -87,12 +90,21 @@ def inference():
     nodes = pool2_shape[1]*pool2_shape[2]
     reshaped = tf.reshape(pool2_output,(-1,nodes))
 
+    # lstm层
+    with tf.variable_scope('lstm',reuse=tf.AUTO_REUSE):
+        lstm_layers = rnn.MultiRNNCell([rnn.LSTMCell(num_units=num)
+        for num in [LSTM_NUMBER, LSTM_NUMBER]], state_is_tuple=True)
+        reshaped = tf.expand_dims(reshaped, axis=2)
+        outputs, h_ = tf.nn.dynamic_rnn(lstm_layers, reshaped, dtype=tf.float32)
+        lstm_output=outputs[:,-1,:]
 
-    #全连接层1
+
+
+    # 全连接层1
     with tf.variable_scope("full1",reuse=tf.AUTO_REUSE):
-        full1_weight = weight_variable([nodes,FULL_SIZE],"weight")
+        full1_weight = weight_variable([LSTM_NUMBER,FULL_SIZE],"weight")
         full1_bias = bias_variable([FULL_SIZE],name='bias')
-        full1_output = tf.nn.relu(tf.matmul(reshaped,full1_weight)+full1_bias)
+        full1_output = tf.nn.relu(tf.matmul(lstm_output,full1_weight)+full1_bias)
 
     # 全连接层2
     with tf.variable_scope("full2", reuse=tf.AUTO_REUSE):
